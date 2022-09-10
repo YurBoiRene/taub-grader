@@ -2,6 +2,8 @@
 
 This is a application meant to quickly grade programming assignments submitted to Canvas.
 
+As a note the application will load a .env file in the current working directory.
+
 It is very fragile and expects a few things:
 
 1. env var CANVAS_BASE_URL set to the base url of canvas with a trailing slash.
