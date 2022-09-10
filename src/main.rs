@@ -108,6 +108,8 @@ impl DownloadedSubmission {
                 println!("\t{} {}", contains, f.name);
             });
 
+        press_enter_to_continue()?;
+
         files
             .iter()
             .filter(|f| re.is_match(&f.name.to_lowercase()))
@@ -158,6 +160,19 @@ async fn fetch_user_profile(
         .fetch(canvas)
         .await?
         .inner())
+}
+
+fn press_enter_to_continue() -> Result<(), Box<dyn std::error::Error>> {
+    print!("Press enter to continue");
+    Command::new("sh")
+        .arg("-c")
+        .arg("read")
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .output()?;
+
+    Ok(())
 }
 
 #[tokio::main]
