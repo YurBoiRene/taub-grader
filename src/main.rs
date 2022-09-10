@@ -163,7 +163,7 @@ async fn fetch_user_profile(
 }
 
 fn press_enter_to_continue() -> Result<(), Box<dyn std::error::Error>> {
-    print!("Press enter to continue");
+    println!("Press enter to continue");
     Command::new("sh")
         .arg("-c")
         .arg("read")
