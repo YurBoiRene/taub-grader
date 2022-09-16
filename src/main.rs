@@ -16,11 +16,12 @@ const README_DISCLAIMER: &str =
     "by submitting this file to carmen, i certify that i have performed all";
 
 #[derive(Debug, strum::Display)]
-enum DownloadErrors {
+enum Errors {
     AttachmentNotFound,
+    InvalidSelection,
 }
 
-impl std::error::Error for DownloadErrors {}
+impl std::error::Error for Errors {}
 
 #[derive(Debug)]
 struct UserSubmission {
@@ -34,7 +35,7 @@ impl UserSubmission {
             .submission
             .attachments
             .as_ref()
-            .ok_or(DownloadErrors::AttachmentNotFound)?[0];
+            .ok_or(Errors::AttachmentNotFound)?[0];
 
         let resp = reqwest::get(&attachment.url).await?;
         let body = std::io::Cursor::new(resp.bytes().await?);
@@ -67,7 +68,7 @@ impl DownloadedSubmission {
         while let Some(entry) = entries.next_entry().await? {
             if entry.file_type().await?.is_file() {
                 files.push(File {
-                    contents: fs::read_to_string(entry.path()).await?,
+                    contents: fs::read_to_string(entry.path()).await.ok(),
                     name: entry.file_name().into_string().unwrap(),
                     path: entry.path(),
                 });
@@ -86,7 +87,13 @@ impl DownloadedSubmission {
             .iter()
             .filter(|f| re.is_match(&f.name.to_lowercase()))
             .for_each(|f| {
-                let contains = match f.contents.to_lowercase().contains(&last_name) {
+                let contains = match f
+                    .contents
+                    .clone()
+                    .unwrap_or_default()
+                    .to_lowercase()
+                    .contains(&last_name)
+                {
                     true => "✔".green(),
                     false => "✗".red(),
                 };
@@ -100,7 +107,13 @@ impl DownloadedSubmission {
             .iter()
             .filter(|f| f.name.to_lowercase().contains("readme"))
             .for_each(|f| {
-                let contains = match f.contents.to_lowercase().contains(README_DISCLAIMER) {
+                let contains = match f
+                    .contents
+                    .clone()
+                    .unwrap_or_default()
+                    .to_lowercase()
+                    .contains(README_DISCLAIMER)
+                {
                     true => "✔".green(),
                     false => "✗".red(),
                 };
@@ -132,7 +145,7 @@ impl DownloadedSubmission {
 
 #[derive(Debug)]
 struct File {
-    contents: String,
+    contents: Option<String>,
     path: PathBuf,
     name: String,
 }
@@ -259,16 +272,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut user_submissions: Vec<_> = submissions
         .into_iter()
         .zip(user_profiles.into_iter())
-        .map(|(submission, user_profile)| UserSubmission {
-            submission,
-            user_profile,
+        .map(|(submission, user_profile)| {
+            Some(UserSubmission {
+                submission,
+                user_profile,
+            })
         })
         .collect();
 
     user_submissions.sort_by(|a, b| {
-        a.user_profile
+        a.as_ref()
+            .unwrap()
+            .user_profile
             .sortable_name
-            .cmp(&b.user_profile.sortable_name)
+            .cmp(&b.as_ref().unwrap().user_profile.sortable_name)
     });
 
     let mut user_submissions: Vec<_> = user_submissions.drain(start..end).collect();
@@ -278,29 +295,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .items(
             &user_submissions
                 .iter()
-                .map(|d| &d.user_profile.sortable_name)
+                .map(|d| &d.as_ref().unwrap().user_profile.sortable_name)
                 .collect::<Box<_>>(),
         )
         .defaults(&vec![true; user_submissions.len()])
         .interact()?;
 
-    let user_submissions_to_grade: Vec<_> = selections
-        .into_iter()
-        .map(|s| user_submissions.swap_remove(s))
-        .collect();
+    for s in selections {
+        let mut submission = None;
+        std::mem::swap(&mut user_submissions[s], &mut submission);
 
-    println!("Downloading selected submissions...");
+        let d = submission
+            .ok_or(Errors::InvalidSelection)?
+            .download_submission()
+            .await?;
 
-    let downloaded_submissions = user_submissions_to_grade
-        .into_iter()
-        .map(UserSubmission::download_submission)
-        .collect::<FuturesOrdered<_>>()
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Box<_>, _>>()?;
-
-    for d in downloaded_submissions.into_iter() {
         d.grade().await?;
     }
 
