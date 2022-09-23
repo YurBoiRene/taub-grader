@@ -1,7 +1,7 @@
 use canvasapi::models::user::UserProfile;
 use canvasapi::prelude::{Canvas, CanvasInformation, Submission};
 use colored::Colorize;
-use dialoguer::{theme::ColorfulTheme, FuzzySelect, Input, MultiSelect};
+use dialoguer::{theme::ColorfulTheme, FuzzySelect, Input, MultiSelect, Confirm};
 use dotenv::dotenv;
 use futures::prelude::*;
 use futures::stream::FuturesOrdered;
@@ -9,7 +9,7 @@ use once_cell::unsync::Lazy;
 use regex::Regex;
 use std::env;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Command, Stdio, exit};
 use tokio::fs;
 
 const README_DISCLAIMER: &str =
@@ -121,7 +121,9 @@ impl DownloadedSubmission {
                 println!("\t{} {}", contains, f.name);
             });
 
-        press_enter_to_continue()?;
+        if !query_continue_or_exit()? {
+            exit(0);
+        }
 
         files
             .iter()
@@ -175,17 +177,10 @@ async fn fetch_user_profile(
         .inner())
 }
 
-fn press_enter_to_continue() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Press enter to continue");
-    Command::new("sh")
-        .arg("-c")
-        .arg("read")
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .output()?;
-
-    Ok(())
+fn query_continue_or_exit() -> Result<bool, Box<dyn std::error::Error>> {
+    Ok(Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt("Do you want to continue?")
+        .interact()?)
 }
 
 #[tokio::main]
